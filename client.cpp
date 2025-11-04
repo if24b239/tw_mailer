@@ -1,8 +1,8 @@
 #include <iostream>
 
-void main() {
+int main() {
     
     std::cout << "This is the client application." << std::endl;
 
-    return;
+    return 0;
 }
