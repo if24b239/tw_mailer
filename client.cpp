@@ -1,8 +1,10 @@
 #include <iostream>
 
+#include "utils/MailerSocket.hpp"
+
 int main() {
     
-    std::cout << "This is the client application." << std::endl;
+    MailerSocket serverSocket = MailerSocket();
 
     return 0;
 }
