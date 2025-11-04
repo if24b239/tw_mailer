@@ -1,5 +1,5 @@
 TARGET=./bin/twmailer
-FLAGS=-std=c++23
+FLAGS=-std=c++23 -I./utils
 CLIENT=$(TARGET)-client
 SERVER=$(TARGET)-server
 
