@@ -14,8 +14,29 @@ int main() {
     }
 
     while (listen(serverSocket.getDescriptor(), 1) != -1) {
-        
+        //accept
+        sockaddr_in client_addr;
+        socklen_t addrlen = sizeof(client_addr);
+        int new_sd;
+
+        try {
+        new_sd = accept(serverSocket.getDescriptor(),(sockaddr*) &client_addr, &addrlen);  
+            if (new_sd == -1) {
+                throw "Could not accept connection";
+            }
+        } catch (const char* msg) {
+            perror(msg);
+        }
+
+        //recv
+        char buffer[1024] = {0};
+        if (recv(new_sd, buffer, sizeof(buffer), 0) == -1) {
+            perror("recv error");
+            exit(1);
+        }
+        std::cout << "message from client: " << buffer << std::endl;
     };
+
 
     return 0;
 }
