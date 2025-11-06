@@ -6,7 +6,7 @@
 #include "utils/MailerSocket.hpp"
 
 int main() {
-    
+
     MailerSocket clientSocket = MailerSocket();
 
     //connect

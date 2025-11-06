@@ -6,7 +6,7 @@
 class MailerSocket: private sockaddr_in {
 public:
     MailerSocket();
-    MailerSocket(in_addr& addr, int port);
+    MailerSocket(in_addr addr, int port);
     MailerSocket(int port);
     ~MailerSocket();
 
