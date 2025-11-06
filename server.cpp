@@ -8,6 +8,9 @@ int main() {
 
     MailerSocket serverSocket = MailerSocket();
 
+    std::cout << "Server IP Address and Port " << std::endl;
+    serverSocket.getIpAddress();
+
     if (bind(serverSocket.getDescriptor(), (sockaddr*) &serverSocket, sizeof(serverSocket)) == -1) {
         perror("bind error");
         exit(1);
