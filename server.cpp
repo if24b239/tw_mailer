@@ -6,7 +6,7 @@
 
 int main() {
 
-    MailerSocket serverSocket = MailerSocket();
+    MailerSocket serverSocket = MailerSocket(8080);
 
     std::cout << "Server IP Address and Port " << std::endl;
     serverSocket.getIpAddress();

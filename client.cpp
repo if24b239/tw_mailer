@@ -7,7 +7,7 @@
 
 int main() {
 
-    MailerSocket clientSocket = MailerSocket();
+    MailerSocket clientSocket = MailerSocket(8080);
 
     //connect
     if (connect(clientSocket.getDescriptor(), (sockaddr*) &clientSocket, sizeof(clientSocket)) == -1) {
@@ -17,28 +17,22 @@ int main() {
 
     std::string input = "";
 
-    //send
-    std::cin >> input;
-    if(input == "SEND")
-    {
-        std::string msgInput = "";
-        std::cin >> msgInput;
-        const char* msg = msgInput.c_str();
-        if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
-            perror("send error");
-            exit(1);
+    while ((std::cin >> input) && input != "QUIT") {
+        if(input == "SEND") {
+            std::cout << "Send:";
+            std::string msgInput = "";
+            std::cin >> msgInput;
+            const char* msg = msgInput.c_str();
+            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
+                perror("send error");
+                exit(1);
+            }
         }
     }
 
     //list
     //read
     //del
-
-    //quit
-    std::cin >> input;
-    if(input == "QUIT") return 0;
-
-    sleep(8);
 
     return 0;
 }
