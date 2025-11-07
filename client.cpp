@@ -2,12 +2,23 @@
 #include <unistd.h>
 #include <string.h>
 #include <string>
+#include <arpa/inet.h>
 
 #include "utils/MailerSocket.hpp"
 
-int main() {
+int main(int argc, char* argv[]) {
 
-    MailerSocket clientSocket = MailerSocket(8080);
+    // Validate command line arguments
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << " <server_ip> <server_port>\n";
+        return 1;
+    }
+
+    int port = std::stoi(argv[2]);
+    in_addr addr;
+    inet_aton(argv[1], &addr);
+
+    MailerSocket clientSocket = MailerSocket(addr.s_addr , port);
 
     //connect
     if (connect(clientSocket.getDescriptor(), (sockaddr*) &clientSocket, sizeof(clientSocket)) == -1) {

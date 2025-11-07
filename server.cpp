@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 
 #include "utils/MailerSocket.hpp"
 
@@ -19,7 +20,19 @@ int main() {
         exit(1);
     }
 
+    /* Binding and listening info */
+    
+    system("echo -n 'Local IP addr: ';ip addr show | grep 'eth0' | grep 'inet' | awk '{print $2}' | cut -d'/' -f1");
+
+    sockaddr_in addr;
+    socklen_t len = sizeof(addr);
+    if (getsockname(serverSocket.getDescriptor(), (sockaddr*)&addr, &len) == 0) {
+        char s[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &addr.sin_addr, s, sizeof(s));
+        std::cout << "Bound to " << s << "\n";
+    }
     std::cout << "Server listening on port " << serverSocket.getPort() << "\n";
+    
 
     for (;;) {
         // accept
