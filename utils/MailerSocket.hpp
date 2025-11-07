@@ -1,24 +1,29 @@
 #pragma once
+
 #include <netinet/in.h>
+#include <sys/socket.h>
 #include <string>
 
 
 class MailerSocket: private sockaddr_in {
 public:
     MailerSocket();
-    MailerSocket(in_addr addr, int port);
+    /* construct with an IPv4 address (in network byte order) and port */
+    MailerSocket(in_addr_t addr, int port);
     MailerSocket(int port);
     ~MailerSocket();
 
-    /*returns the socket descriptor for the constructed socket*/
+    /* returns the socket descriptor for the constructed socket */
     inline int getDescriptor() { return socket_fd; };
 
-    /*prints out the ip address and port*/
-    void getIpAddress();
-
-    /*returns port*/
+    /* returns port */
     inline int getPort() { return ntohs(this->sin_port); }
+
+    /* accessors for bind()/accept() callers */
+    sockaddr* getSockAddr();
+    const sockaddr* getSockAddr() const;
+    inline socklen_t getSockAddrLen() const { return sizeof(sockaddr_in); }
+
 private:
-    
     int socket_fd;
 };
