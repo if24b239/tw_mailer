@@ -6,9 +6,15 @@
 
 #include "utils/MailerSocket.hpp"
 
-int main() {
+int main(int argc, char* argv[]) {
 
-    MailerSocket serverSocket = MailerSocket(8080);
+    if (argc != 3) {
+        std::cerr << "Usage: " << argv[0] << "<port> <directory_name>" << "\n";
+        return 1;
+    }
+
+    std::string directory_name = argv[2];
+    MailerSocket serverSocket = MailerSocket(std::stoi(argv[1]));
 
     if (bind(serverSocket.getDescriptor(), serverSocket.getSockAddr(), serverSocket.getSockAddrLen()) == -1) {
         perror("bind error");
@@ -44,18 +50,23 @@ int main() {
             continue; // try accepting again
         }
 
+        std::cout << "Client connected.\n";
+
         // recv
         char buffer[1024] = {0};
-        bool quit = false;
-        while (!quit) {
+        for (;;) {
             ssize_t recvd = recv(new_sd, buffer, sizeof(buffer), 0);
             if (recvd == -1) {
                 perror("recv error");
                 continue; // wait for a new datapacket
             }
+            if (recvd == 0) { // connection closed by client
+                std::cout << "Client disconnected.\n";
+                break;
+            }
             std::cout << "message from client: " << buffer << std::endl;
         }
-        close(new_sd); //TODO: client QUIT should close the connection.
+        close(new_sd);
     }
 
 
