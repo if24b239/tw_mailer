@@ -34,10 +34,10 @@ int main() {
     std::cout << "Server listening on port " << serverSocket.getPort() << "\n";
     
 
+    sockaddr_in client_addr;
+    socklen_t addrlen = sizeof(client_addr);
     for (;;) {
         // accept
-        sockaddr_in client_addr;
-        socklen_t addrlen = sizeof(client_addr);
         int new_sd = accept(serverSocket.getDescriptor(), (sockaddr*) &client_addr, &addrlen);
         if (new_sd == -1) {
             perror("accept error");
@@ -46,13 +46,15 @@ int main() {
 
         // recv
         char buffer[1024] = {0};
-        ssize_t recvd = recv(new_sd, buffer, sizeof(buffer), 0);
-        if (recvd == -1) {
-            perror("recv error");
-            close(new_sd);
-            continue;
+        bool quit = false;
+        while (!quit) {
+            ssize_t recvd = recv(new_sd, buffer, sizeof(buffer), 0);
+            if (recvd == -1) {
+                perror("recv error");
+                continue; // wait for a new datapacket
+            }
+            std::cout << "message from client: " << buffer << std::endl;
         }
-        std::cout << "message from client: " << buffer << std::endl;
         close(new_sd); //TODO: client QUIT should close the connection.
     }
 
