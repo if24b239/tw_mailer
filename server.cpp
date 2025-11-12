@@ -65,6 +65,26 @@ int main(int argc, char* argv[]) {
                 std::cout << "Client disconnected.\n";
                 break;
             }
+            
+            switch(buffer[0])
+            {
+                case 'S':
+                {
+                    break;
+                }
+                case 'L':
+                {
+                    break;
+                }
+                case 'R':
+                {
+                    break;
+                }
+                case 'D':
+                {
+                    break;
+                }
+            }
             std::cout << "message from client: " << buffer << std::endl;
             std::memset(buffer, 0, sizeof(buffer));
         }
