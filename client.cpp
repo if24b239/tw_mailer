@@ -30,20 +30,75 @@ int main(int argc, char* argv[]) {
 
     while ((std::cin >> input) && input != "QUIT") {
         if(input == "SEND") {
-            std::cout << "Send:";
-            std::string msgInput = "";
-            std::cin >> msgInput;
+            std::cout << "Sender:";
+            std::string sender = "";
+            std::cin >> sender;
+            std::cin.ignore();
+
+            std::cout << "Receiver:";
+            std::string receiver = "";
+            std::cin >> receiver;
+            std::cin.ignore();
+
+            std::cout << "Subject:";
+            std::string subject = "";
+            std::cin >> subject;
+            std::cin.ignore();
+
+            std::cout << "Message:";
+            std::string message = "";
+            std::string line;
+            while (std::getline(std::cin, line) && !(line[0] == '.'))
+            {
+                message += line;
+            }
+            std::string msgInput = "SEND: " + sender + " " + receiver + " " + subject + " " + message;
             const char* msg = msgInput.c_str();
             if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
                 perror("send error");
                 exit(1);
             }
         }
+        else if (input == "LIST"){
+            std::cout << "Username:";   
+            std::string username = "";
+            std::cin >> username;
+            std::string msgInput = "LIST: " + username;
+            const char* msg = msgInput.c_str();
+            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
+                perror("send error");
+                exit(1);
+            }
+        }
+        else if(input == "READ"){
+            std::cout << "Username:";
+            std::string username = "";
+            std::cin >> username;
+            std::cout << "Messsage Number:";
+            std::string msg_num = "";
+            std::cin >> msg_num;
+            std::string msgString = "READ: " + username + " " + msg_num;
+            const char* msg = msgString.c_str();
+            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
+                perror("send error");
+                exit(1);
+            }
+        }
+        else if(input == "DEL"){
+            std::cout << "Username:";
+            std::string username = "";
+            std::cin >> username;
+            std::cout << "Messsage Number:";
+            std::string msg_num = "";
+            std::cin >> msg_num;
+            std::string msgString = "DEL: " + username + " " + msg_num;
+            const char* msg = msgString.c_str();
+            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
+                perror("send error");
+                exit(1);
+            }
+        }
     }
-
-    //list
-    //read
-    //del
 
     return 0;
 }

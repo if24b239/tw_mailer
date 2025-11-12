@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <unistd.h>
 #include <arpa/inet.h>
+#include <cstring>
 
 #include "utils/MailerSocket.hpp"
 
@@ -65,6 +66,7 @@ int main(int argc, char* argv[]) {
                 break;
             }
             std::cout << "message from client: " << buffer << std::endl;
+            std::memset(buffer, 0, sizeof(buffer));
         }
         close(new_sd);
     }
