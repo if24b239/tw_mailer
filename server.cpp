@@ -4,8 +4,11 @@
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <cstring>
+#include <fstream>
+#include <vector>
 
 #include "utils/MailerSocket.hpp"
+#include "utils/Parser.hpp"
 
 int main(int argc, char* argv[]) {
 
@@ -65,27 +68,105 @@ int main(int argc, char* argv[]) {
                 std::cout << "Client disconnected.\n";
                 break;
             }
-            
+            Parser parser = Parser();
             switch(buffer[0])
             {
                 case 'S':
                 {
+                    parser.parseSEND(buffer);
+                    std::string sender = parser.getSender();
+                    std::string receiver = parser.getReceiver();
+                    std::string subject = parser.getSubject();
+                    std::string msg = parser.getMsg();
+
+                    std::ofstream file(directory_name + "/" + receiver + ".txt", std::ios::app);
+
+                    file << "\nSender:" + sender + "\nReceiver:" + receiver + "\nSubject:" + subject + "\nMessage:" + msg;
+
+                    file.close();
+
                     break;
                 }
                 case 'L':
                 {
+                    parser.parseLIST(buffer);
+                    std::string username = parser.getUsername();
+
+                    std::string path = directory_name + "/" + username + ".txt";
+
+                        std::ifstream file(path);
+                        if(!file) { std::cout << "unable to open file"; }
+                        else
+                        {
+                            std::string line;
+                            std::vector<std::string> subjects;
+
+                            while (getline(file, line)) {
+                                if (line.find("Subject:") == 0) {
+                                    std::string subject = line.substr(8);
+                                    subjects.push_back(subject); 
+                                }
+                            }
+
+                            std::cout << "Subjects count:" << subjects.size() << std::endl;
+                            for (const auto& subject : subjects) {
+                                std::cout << subject << std::endl;
+                            }
+
+                            file.close();
+                        }
+
                     break;
                 }
                 case 'R':
                 {
+                    parser.parseREADorDEL(buffer, 6);
+
+                    std::string username = parser.getUsername();
+
+                    std::string path = directory_name + "/" + username + ".txt";
+
+                        std::ifstream file(path);
+                        if(!file) { std::cout << "unable to open file"; }
+                        else
+                        {
+                            int msgNum = parser.getMsgNum();
+                            std::string line;
+                            std::vector<std::string> msg;
+                            int cnt = 0;
+
+                            while (std::getline(file, line)) {
+                                if (line.find("Sender:") == 0) {
+                                    cnt++;
+                                    if (cnt == msgNum) {
+                                        do
+                                        {
+                                            msg.push_back(line);
+                                        } 
+                                        while (std::getline(file, line) && line.find("Sender:") != 0);
+
+                                        break;
+                                    }
+                                }
+                            }
+
+                            for (const auto& m : msg) {
+                                std::cout << m << std::endl;
+                            }
+
+                            file.close();
+                        }
+
                     break;
                 }
                 case 'D':
                 {
+                    parser.parseREADorDEL(buffer, 5);
                     break;
                 }
             }
-            std::cout << "message from client: " << buffer << std::endl;
+
+            //std::cout << "message from client: " << buffer << std::endl;
             std::memset(buffer, 0, sizeof(buffer));
         }
         close(new_sd);

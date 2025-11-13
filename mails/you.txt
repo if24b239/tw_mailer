@@ -1,0 +1,9 @@
+
+Sender:me
+Receiver:you
+Subject:hallo
+Message:i am amessage
+Sender:me
+Receiver:you
+Subject:bye
+Message:i am a message

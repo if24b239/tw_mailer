@@ -3,14 +3,15 @@ FLAGS=-std=c++23 -I./utils -g -Wall
 CLIENT=$(TARGET)-client
 SERVER=$(TARGET)-server
 SOCKET=$(TARGET)-socket.o
+PARSER=$(TARGET)-parser.o
 
 all: $(CLIENT) $(SERVER)
 
-$(CLIENT): $(CLIENT).o $(SOCKET)
-	g++ $(FLAGS) -o $(CLIENT) $(CLIENT).o $(SOCKET)
+$(CLIENT): $(CLIENT).o $(SOCKET) $(PARSER)
+	g++ $(FLAGS) -o $(CLIENT) $(CLIENT).o $(SOCKET) $(PARSER)
 
-$(SERVER): $(SERVER).o $(SOCKET)
-	g++ $(FLAGS) -o $(SERVER) $(SERVER).o $(SOCKET)
+$(SERVER): $(SERVER).o $(SOCKET) $(PARSER)
+	g++ $(FLAGS) -o $(SERVER) $(SERVER).o $(SOCKET) $(PARSER)
 
 
 # Compile .o Files
@@ -22,6 +23,9 @@ $(SERVER).o: server.cpp
 
 $(SOCKET): utils/MailerSocket.cpp utils/MailerSocket.hpp
 	g++ $(FLAGS) -c utils/MailerSocket.cpp -o $(SOCKET)
+
+$(PARSER): utils/Parser.cpp utils/Parser.hpp
+	g++ $(FLAGS) -c utils/Parser.cpp -o $(PARSER)
 
 # Cleanup
 clean: clean_o
