@@ -2,6 +2,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
+#include <string.h>
 #include <arpa/inet.h>
 
 #include "utils/MailerSocket.hpp"
@@ -39,23 +40,21 @@ int main(int argc, char* argv[]) {
     }
     std::cout << "Server listening on port " << serverSocket.getPort() << "\n";
     
-
     sockaddr_in client_addr;
     socklen_t addrlen = sizeof(client_addr);
     for (;;) {
         // accept
-        int new_sd = accept(serverSocket.getDescriptor(), (sockaddr*) &client_addr, &addrlen);
-        if (new_sd == -1) {
+        int client_sd = accept(serverSocket.getDescriptor(), (sockaddr*) &client_addr, &addrlen);
+        if (client_sd == -1) {
             perror("accept error");
             continue; // try accepting again
         }
-
         std::cout << "Client connected.\n";
 
         // recv
         char buffer[1024] = {0};
         for (;;) {
-            ssize_t recvd = recv(new_sd, buffer, sizeof(buffer), 0);
+            ssize_t recvd = recv(client_sd, buffer, sizeof(buffer), 0);
             if (recvd == -1) {
                 perror("recv error");
                 continue; // wait for a new datapacket
@@ -66,7 +65,7 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "message from client: " << buffer << std::endl;
         }
-        close(new_sd);
+        close(client_sd);
     }
 
 

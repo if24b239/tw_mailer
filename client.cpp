@@ -1,7 +1,6 @@
 #include <iostream>
 #include <unistd.h>
 #include <string.h>
-#include <string>
 #include <arpa/inet.h>
 
 #include "utils/MailerSocket.hpp"
@@ -32,7 +31,7 @@ int main(int argc, char* argv[]) {
         if(input == "SEND") {
             std::cout << "Send:";
             std::string msgInput = "";
-            std::cin >> msgInput;
+            std::getline(std::cin >> std::ws, msgInput);
             const char* msg = msgInput.c_str();
             if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
                 perror("send error");
