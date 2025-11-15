@@ -17,17 +17,19 @@ Parser::~Parser()
 
 void Parser::parseSEND(char buffer[])
 {
-    int index = 6;
+    int index = 6;  //length of prefix "SEND: "
 
-    for(int i = index; buffer[i] != ' '; i++)
+    //first entry of buffer write into sender
+    for(int i = index; buffer[i] != ' '; i++)   //stops at first ' '
     {
         this->sender.push_back(buffer[i]);
         index++;
     }
 
-    index++;
+    index++;    //increase index inbetween to start again at start of new entry
 
-    for(int i = index; buffer[i] != ' '; i++)
+    //second entry receiver
+    for(int i = index; buffer[i] != ' '; i++)   //stops at first ' '
     {
         this->receiver.push_back(buffer[i]);
         index++;
@@ -35,7 +37,8 @@ void Parser::parseSEND(char buffer[])
 
     index++;
 
-    for(int i = index; buffer[i] != ' '; i++)
+    //third entry subject
+    for(int i = index; buffer[i] != ' '; i++)   //stops at first ' '
     {
         this->subject.push_back(buffer[i]);
         index++;
@@ -43,9 +46,11 @@ void Parser::parseSEND(char buffer[])
 
     index++;
 
-    for(int i = index; i < 1024; i++)
+    int length = 1024 - index;  //remaining max length of buffer
+    //fourth entry msg
+    for(int i = index; i < length; i++)
     {
-        if(buffer[i] == NULL) break;
+        if(buffer[i] == NULL) break;    //stops at first NULL element
         this->msg.push_back(buffer[i]);
         index++;
     }
@@ -54,26 +59,29 @@ void Parser::parseSEND(char buffer[])
 
 void Parser::parseLIST(char buffer[])
 {
-    int index = 6;
+    int index = 6;  //length of prefix "LIST: "
 
-    for(int i = index; buffer[i] != NULL; i++)
+    //first element is username
+    for(int i = index; buffer[i] != NULL; i++)    //stops at first NULL element
     {
         this->username.push_back(buffer[i]);
         index++;
     }
 }
 
-void Parser::parseREADorDEL(char buffer[], int index)
+void Parser::parseREADorDEL(char buffer[], int index)   //index as parameter because only difference of function between READ and DEL
 {
-    for(int i = index; buffer[i] != ' '; i++)
+    //first element is username
+    for(int i = index; buffer[i] != ' '; i++)   //stops at first ' '
     {
         this->username.push_back(buffer[i]);
         index++;
     }
 
-    index++;
+    index++;    //increase index inbetween to start again at start of new entry
 
-    for(int i = index; buffer[i] != NULL; i++)
+    //second element is msg number
+    for(int i = index; buffer[i] != NULL; i++)  //stops at first NULL element
     {
         std::string num;
         num.push_back(buffer[i]);
