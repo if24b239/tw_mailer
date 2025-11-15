@@ -5,7 +5,7 @@ SERVER=$(TARGET)-server
 SOCKET=$(TARGET)-socket.o
 PARSER=$(TARGET)-parser.o
 
-all: $(CLIENT) $(SERVER)
+all: $(CLIENT) $(SERVER) modules
 
 $(CLIENT): $(CLIENT).o $(SOCKET) $(PARSER)
 	g++ $(FLAGS) -o $(CLIENT) $(CLIENT).o $(SOCKET) $(PARSER)
@@ -26,6 +26,9 @@ $(SOCKET): utils/MailerSocket.cpp utils/MailerSocket.hpp
 
 $(PARSER): utils/Parser.cpp utils/Parser.hpp
 	g++ $(FLAGS) -c utils/Parser.cpp -o $(PARSER)
+
+modules: .gitmodules
+	git submodule update --init --recursive
 
 # Cleanup
 clean: clean_o

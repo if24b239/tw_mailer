@@ -134,6 +134,7 @@ int main(int argc, char* argv[]) {
 
                     std::string path = directory_name + "/" + username + ".txt";    //specified filepath
 
+                    
                         //chk whether file(username) exists
                         std::ifstream file(path);
                         if(!file) { std::cout << "unable to open file"; }
