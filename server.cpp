@@ -9,7 +9,98 @@
 #include <vector>
 
 #include "utils/MailerSocket.hpp"
-#include "utils/Parser.hpp"
+
+void saveMessage(json mail, std::string dir) {
+    std::string path = dir + "/" + mail["receiver"].get<std::string>() + ".txt";
+    
+    // Read existing data
+    std::ifstream infile(path);
+    json data;
+    if (infile.good()) {
+        std::string content((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
+        infile.close();
+        if (!content.empty()) {
+            data = json::parse(content);
+        } else {
+            data = json::array();
+        }
+    } else {
+        data = json::array();
+    }
+    
+    // Add new message
+    data.push_back(mail);
+    
+    // Write back
+    std::ofstream outfile(path);
+    if (!outfile) { std::cout << "unable to open file: " << path << std::endl; return; }
+    outfile << data.dump(4);
+    outfile.close();
+}
+
+
+std::vector<std::string> listMessages(std::string username, std::string dir) {
+    
+    std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
+    std::ifstream file(path); //check whether file(username) exists
+    if(!file) { std::cout << "unable to open file: " << path << std::endl; }
+
+    // get the json data and list all subjects
+    json data = json::parse(file);
+    
+    file.close();
+
+    std::vector<std::string> subjects;
+    for (const auto& message : data) {
+        subjects.push_back(message["subject"].get<std::string>());
+    }
+
+    return subjects;
+}
+
+Mail returnMessage(std::string username, int number, std::string dir) {
+
+    std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
+    std::ifstream file(path); //check whether file(username) exists
+    if(!file) { std::cout << "unable to open file: " << path << std::endl; }
+
+    // get the json data and return the right message
+    json data = json::parse(file);
+
+    file.close();
+
+    return data.at(number-1).get<Mail>();
+}
+
+void deleteMessage(std::string username, int number, std::string dir) {
+    
+    std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
+    std::ifstream infile(path, std::ios::out);
+    if(!infile) { std::cout << "unable to open file: " << path << std::endl; }
+
+    json data;
+    if (infile.good()) {
+        std::string content((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
+        infile.close();
+        if (!content.empty()) {
+            data = json::parse(content);
+        } else {
+            std::cout << "No Messages to be deleted in file: " << path << std::endl;
+            return;
+        }
+    } else {
+        std::cout << "unable to open file: " << path << std::endl;
+    }
+    infile.close();
+
+    data.erase(data.begin() + number-1);
+
+    std::ofstream outfile(path);
+    if(!outfile) { std::cout << "unable to open file: " << path << std::endl; }
+    outfile << data.dump(4);
+
+    outfile.close();
+}
 
 int main(int argc, char* argv[]) {
 
@@ -67,119 +158,42 @@ int main(int argc, char* argv[]) {
                 std::cout << "Client disconnected.\n";
                 break;
             }
-            Parser parser = Parser();   //parser to correctly parse buffer for each method
-            switch(buffer[0])   //chk first element of buffer (start of Prefix added in client)
+
+            json message = json::parse(buffer);
+
+            json returnMsg = json::object();
+
+            Mail retMail;
+            std::vector<std::string> allSubjects;
+            
+            switch (message["receive_type"].get<int>())
             {
-                case 'S':   //SEND
-                {
-                    //parse SEND buffer and get its elements
-                    parser.parseSEND(buffer);
-                    std::string sender = parser.getSender();
-                    std::string receiver = parser.getReceiver();
-                    std::string subject = parser.getSubject();
-                    std::string msg = parser.getMsg();
-
-                    //create or open specified file
-                    std::ofstream file(directory_name + "/" + receiver + ".txt", std::ios::app);
-
-                    //write info in file
-                    file << "\nSender:" + sender + "\nReceiver:" + receiver + "\nSubject:" + subject + "\nMessage:" + msg;
-
-                    file.close();
-
-                    //TODO: error handling and send OK/ERR to client
-
-                    break;
+            case SEND:
+                saveMessage(message["mail"], directory_name);
+                //TODO: send ack/err back
+                break;
+            case LIST:
+                allSubjects = listMessages(message["content"].get<std::string>(), directory_name);
+                for (auto s : allSubjects) {
+                    std::cout << s << ",";
                 }
-                case 'L':   //LIST
-                {
-                    //parse LIST buffer and get its elements
-                    parser.parseLIST(buffer);
-                    std::string username = parser.getUsername();
-
-                    std::string path = directory_name + "/" + username + ".txt";    //specifiy correct path to file
-
-                        //chk whether file(username) exists
-                        std::ifstream file(path);
-                        if(!file) { std::cout << "unable to open file"; }
-                        else
-                        {
-                            std::string line;
-                            std::vector<std::string> subjects;
-
-                            //add every line of file starting with "Subject:" to vector
-                            while (getline(file, line)) {
-                                if (line.find("Subject:") == 0) {
-                                    std::string subject = line.substr(8);   //remove "Subject:"
-                                    subjects.push_back(subject); 
-                                }
-                            }
-
-                            //TODO: output to client not on console
-                            std::cout << "Subjects count:" << subjects.size() << std::endl;
-                            for (const auto& subject : subjects) {
-                                std::cout << subject << std::endl;
-                            }
-
-                            file.close();
-                        }
-
-                    break;
-                }
-                case 'R':   //READ
-                {
-                    //parse READ buffer and get its elements
-                    parser.parseREADorDEL(buffer, 6);
-                    std::string username = parser.getUsername();
-
-                    std::string path = directory_name + "/" + username + ".txt";    //specified filepath
-
-                    
-                        //chk whether file(username) exists
-                        std::ifstream file(path);
-                        if(!file) { std::cout << "unable to open file"; }
-                        else
-                        {
-                            //get remaining elements of buffer
-                            int msgNum = parser.getMsgNum();
-
-                            std::string line;
-                            std::vector<std::string> msg;
-                            int cnt = 0;
-
-                            while (std::getline(file, line)) {
-                                if (line.find("Sender:") == 0) {    //search for the msgNum.te element of "Sender:"
-                                    cnt++;
-                                    if (cnt == msgNum) {
-                                        do
-                                        {
-                                            msg.push_back(line);    //add line +ff to vector
-                                        } 
-                                        while (std::getline(file, line) && line.find("Sender:") != 0);  //until next message starts (line again begins with "Sender:")
-
-                                        break;
-                                    }
-                                }
-                            }
-
-                            //TODO: output to client not on console
-                            for (const auto& m : msg) {
-                                std::cout << m << std::endl;
-                            }
-
-                            file.close();
-                        }
-
-                    break;
-                }
-                case 'D':   //DEL
-                {
-                    parser.parseREADorDEL(buffer, 5);
-                    break;
-                }
+                std::cout << std::endl;
+                //TODO: send subjects back
+                break;
+            case READ:
+                retMail = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), directory_name);
+                std::cout << retMail.serialize();
+                //TODO: send mail back
+                break;
+            case DEL:
+                deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), directory_name);
+                //TODO: send ack/err back
+                break;
+            
+            default:
+                perror("INVALID RETURN JSON");
+                break;
             }
-
-            //std::cout << "message from client: " << buffer << std::endl;
             std::memset(buffer, 0, sizeof(buffer)); //clear buffer after each message
         }
         close(client_sd);

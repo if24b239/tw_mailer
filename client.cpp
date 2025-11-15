@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <Mail.hpp>
 
 #include "utils/MailerSocket.hpp"
 
@@ -29,6 +30,7 @@ int main(int argc, char* argv[]) {
 
     while ((std::cin >> input) && input != "QUIT") {
         if(input == "SEND") {
+    
             std::cout << "Sender:";
             std::string sender = "";
             std::cin >> sender;
@@ -56,58 +58,43 @@ int main(int argc, char* argv[]) {
                 message += line;
                 message += "\n";
             }
-            //create msgString with identifying Prefix and char* [] to use in send
-            std::string msgInput = "SEND: " + sender + " " + receiver + " " + subject + " " + message;
-            const char* msg = msgInput.c_str();
-            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
-                perror("send error");
-                exit(1);
-            }
+
+            // create mail constuct
+            Mail mail(sender, receiver, subject, message);
+
+            // send the mail to the server
+            clientSocket.sendMsg(mail, SEND);
         }
         else if (input == "LIST"){
             //read username from console
             std::cout << "Username:";   
             std::string username = "";
             std::cin >> username;
-            //create msgString with identifying Prefix and char* [] to use in send
-            std::string msgInput = "LIST: " + username;
-            const char* msg = msgInput.c_str();
-            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
-                perror("send error");
-                exit(1);
-            }
+
+            clientSocket.sendMsg(username, LIST);
+            
         }
         else if(input == "READ"){
             //read input from console
             std::cout << "Username:";
             std::string username = "";
             std::cin >> username;
-            std::cout << "Messsage Number:";
-            std::string msg_num = "";
+            std::cout << "Message Number:";
+            int msg_num;
             std::cin >> msg_num;
-            //create msgString with identifying Prefix and char* [] to use in send
-            std::string msgString = "READ: " + username + " " + msg_num;
-            const char* msg = msgString.c_str();
-            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
-                perror("send error");
-                exit(1);
-            }
+            
+            clientSocket.sendMsg(username, msg_num, READ);
         }
         else if(input == "DEL"){
             //read input from console
             std::cout << "Username:";
             std::string username = "";
             std::cin >> username;
-            std::cout << "Messsage Number:";
-            std::string msg_num = "";
+            std::cout << "Message Number:";
+            int msg_num;
             std::cin >> msg_num;
-            //create msgString with identifying Prefix and char* [] to use in send
-            std::string msgString = "DEL: " + username + " " + msg_num;
-            const char* msg = msgString.c_str();
-            if (send(clientSocket.getDescriptor(), msg, strlen(msg), 0) == -1) {
-                perror("send error");
-                exit(1);
-            }
+            
+            clientSocket.sendMsg(username, msg_num, DEL);
         }
     }
 

@@ -5,6 +5,7 @@
 #include <arpa/inet.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <json.hpp>
 
 MailerSocket::MailerSocket(in_addr_t addr, int port) {
     try {
@@ -51,4 +52,34 @@ sockaddr* MailerSocket::getSockAddr() {
 
 const sockaddr* MailerSocket::getSockAddr() const {
     return reinterpret_cast<const sockaddr*>(static_cast<const sockaddr_in*>(this));
+}
+
+void sendMessage(std::string msg, int socket) {
+    const char* message = msg.c_str();
+    if (send(socket, message, strlen(message), 0) == -1) {
+        perror("send error");
+        exit(1);
+    }
+}
+
+void MailerSocket::sendMsg(Mail m, ReceiveType type) {
+    nlohmann::json j;
+    j["receive_type"] = type;
+    j["mail"] = m;
+    sendMessage(j.dump(), this->getDescriptor());
+}
+
+void MailerSocket::sendMsg(std::string c, ReceiveType type) {
+    nlohmann::json j;
+    j["receive_type"] = type;
+    j["content"] = c;
+    sendMessage(j.dump(), this->getDescriptor());
+}
+
+void MailerSocket::sendMsg(std::string c, int i, ReceiveType type) {
+    nlohmann::json j;
+    j["receive_type"] = type;
+    j["content"] = c;
+    j["number"] = i;
+    sendMessage(j.dump(), this->getDescriptor());
 }
