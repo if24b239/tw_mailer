@@ -4,13 +4,17 @@
 #include <unistd.h>
 #include <string.h>
 #include <arpa/inet.h>
+#include <cstring>
+#include <fstream>
+#include <vector>
 
 #include "utils/MailerSocket.hpp"
+#include "utils/Parser.hpp"
 
 int main(int argc, char* argv[]) {
 
     if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << "<port> <directory_name>" << "\n";
+        std::cerr << "Usage: " << argv[0] << " <port> <directory_name>" << "\n";
         return 1;
     }
 
@@ -63,7 +67,119 @@ int main(int argc, char* argv[]) {
                 std::cout << "Client disconnected.\n";
                 break;
             }
-            std::cout << "message from client: " << buffer << std::endl;
+            Parser parser = Parser();   //parser to correctly parse buffer for each method
+            switch(buffer[0])   //chk first element of buffer (start of Prefix added in client)
+            {
+                case 'S':   //SEND
+                {
+                    //parse SEND buffer and get its elements
+                    parser.parseSEND(buffer);
+                    std::string sender = parser.getSender();
+                    std::string receiver = parser.getReceiver();
+                    std::string subject = parser.getSubject();
+                    std::string msg = parser.getMsg();
+
+                    //create or open specified file
+                    std::ofstream file(directory_name + "/" + receiver + ".txt", std::ios::app);
+
+                    //write info in file
+                    file << "\nSender:" + sender + "\nReceiver:" + receiver + "\nSubject:" + subject + "\nMessage:" + msg;
+
+                    file.close();
+
+                    //TODO: error handling and send OK/ERR to client
+
+                    break;
+                }
+                case 'L':   //LIST
+                {
+                    //parse LIST buffer and get its elements
+                    parser.parseLIST(buffer);
+                    std::string username = parser.getUsername();
+
+                    std::string path = directory_name + "/" + username + ".txt";    //specifiy correct path to file
+
+                        //chk whether file(username) exists
+                        std::ifstream file(path);
+                        if(!file) { std::cout << "unable to open file"; }
+                        else
+                        {
+                            std::string line;
+                            std::vector<std::string> subjects;
+
+                            //add every line of file starting with "Subject:" to vector
+                            while (getline(file, line)) {
+                                if (line.find("Subject:") == 0) {
+                                    std::string subject = line.substr(8);   //remove "Subject:"
+                                    subjects.push_back(subject); 
+                                }
+                            }
+
+                            //TODO: output to client not on console
+                            std::cout << "Subjects count:" << subjects.size() << std::endl;
+                            for (const auto& subject : subjects) {
+                                std::cout << subject << std::endl;
+                            }
+
+                            file.close();
+                        }
+
+                    break;
+                }
+                case 'R':   //READ
+                {
+                    //parse READ buffer and get its elements
+                    parser.parseREADorDEL(buffer, 6);
+                    std::string username = parser.getUsername();
+
+                    std::string path = directory_name + "/" + username + ".txt";    //specified filepath
+
+                        //chk whether file(username) exists
+                        std::ifstream file(path);
+                        if(!file) { std::cout << "unable to open file"; }
+                        else
+                        {
+                            //get remaining elements of buffer
+                            int msgNum = parser.getMsgNum();
+
+                            std::string line;
+                            std::vector<std::string> msg;
+                            int cnt = 0;
+
+                            while (std::getline(file, line)) {
+                                if (line.find("Sender:") == 0) {    //search for the msgNum.te element of "Sender:"
+                                    cnt++;
+                                    if (cnt == msgNum) {
+                                        do
+                                        {
+                                            msg.push_back(line);    //add line +ff to vector
+                                        } 
+                                        while (std::getline(file, line) && line.find("Sender:") != 0);  //until next message starts (line again begins with "Sender:")
+
+                                        break;
+                                    }
+                                }
+                            }
+
+                            //TODO: output to client not on console
+                            for (const auto& m : msg) {
+                                std::cout << m << std::endl;
+                            }
+
+                            file.close();
+                        }
+
+                    break;
+                }
+                case 'D':   //DEL
+                {
+                    parser.parseREADorDEL(buffer, 5);
+                    break;
+                }
+            }
+
+            //std::cout << "message from client: " << buffer << std::endl;
+            std::memset(buffer, 0, sizeof(buffer)); //clear buffer after each message
         }
         close(client_sd);
     }
