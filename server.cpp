@@ -163,31 +163,35 @@ int main(int argc, char* argv[]) {
 
             json returnMsg = json::object();
 
-            Mail retMail;
-            std::vector<std::string> allSubjects;
+            std::string c;
             
             switch (message["receive_type"].get<int>())
             {
             case SEND:
                 saveMessage(message["mail"], directory_name);
-                //TODO: send ack/err back
+                c = "OK\n";
                 break;
             case LIST:
-                allSubjects = listMessages(message["content"].get<std::string>(), directory_name);
-                for (auto s : allSubjects) {
-                    std::cout << s << ",";
+                {
+                    int count = 0;
+                    std::string subjects = "";
+                    for (auto s : listMessages(message["content"].get<std::string>(), directory_name)) {
+                        subjects += s;
+                        subjects += "\n";
+                        count++;
+                    }
+                    ;
+                    c += "Count of Messages: " + std::to_string(count) + '\n';
+                    c += subjects;
+                    std::cout << c;
                 }
-                std::cout << std::endl;
-                //TODO: send subjects back
                 break;
             case READ:
-                retMail = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), directory_name);
-                std::cout << retMail.serialize();
-                //TODO: send mail back
+                c = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), directory_name).serialize();
                 break;
             case DEL:
                 deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), directory_name);
-                //TODO: send ack/err back
+                c = "OK\n";
                 break;
             
             default:
@@ -195,6 +199,16 @@ int main(int argc, char* argv[]) {
                 break;
             }
             std::memset(buffer, 0, sizeof(buffer)); //clear buffer after each message
+
+            nlohmann::json j;
+            j["receive_type"] = ReceiveType::REPLY;
+            j["content"] = c;
+            std::string msg = j.dump();
+            const char* messag = msg.c_str();
+            if (send(client_sd, messag, strlen(messag), 0) == -1) {
+                perror("send error");
+                exit(1);
+            }
         }
         close(client_sd);
     }

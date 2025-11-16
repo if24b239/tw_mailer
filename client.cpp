@@ -96,6 +96,28 @@ int main(int argc, char* argv[]) {
             
             clientSocket.sendMsg(username, msg_num, DEL);
         }
+
+        // wait for server response
+        char buffer[2048] = {0};
+        ssize_t recvd = recv(clientSocket.getDescriptor(), buffer, sizeof(buffer), 0);
+        if (recvd == -1) {
+            perror("recv error");
+            continue; // wait for a new datapacket
+        }
+        if (recvd == 0) { // connection closed by server
+            std::cout << "Server disconnected.\n";
+            break;
+        }
+
+        json message = json::parse(buffer);
+
+        if (message["receive_type"].get<int>() != REPLY) {
+            perror("invalid receive type");
+            continue;
+        }
+
+        std::cout << message["content"].get<std::string>();
+
     }
 
     return 0;
