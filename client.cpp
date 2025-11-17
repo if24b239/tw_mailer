@@ -98,7 +98,7 @@ int main(int argc, char* argv[]) {
         }
 
         // wait for server response
-        char buffer[2048] = {0};
+        char buffer[1024] = {0};
         ssize_t recvd = recv(clientSocket.getDescriptor(), buffer, sizeof(buffer), 0);
         if (recvd == -1) {
             perror("recv error");

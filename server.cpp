@@ -196,6 +196,7 @@ int main(int argc, char* argv[]) {
             
             default:
                 perror("INVALID RETURN JSON");
+                c = "ERR\n";
                 break;
             }
             std::memset(buffer, 0, sizeof(buffer)); //clear buffer after each message
