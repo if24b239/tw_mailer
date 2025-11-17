@@ -46,4 +46,4 @@ Data Storage: File System
 *How to*
 
 Should you get errors like "git@github.com: Permission denied (publickey). Run the following command in this Directory
-git config url."https://github.com/".insteadOf "git@github.com"
+git config url."https://github.com/".insteadOf "git@github.com:"
