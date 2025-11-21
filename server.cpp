@@ -116,6 +116,9 @@ void deleteMessage(std::string username, int number, std::string dir) {
 
 bool login(std::string username, std::string password, LDAP* ld, MAP_T& login_map) {
 
+    // get DN form username
+    std::string dn = "uid=" + username + ",ou=people,dc=technikum-wien,dc=at";
+
     // connect with ldap server
     // credentials to send
     BerValue clientCreds;
@@ -124,18 +127,19 @@ bool login(std::string username, std::string password, LDAP* ld, MAP_T& login_ma
     
     // credentials received
     BerValue* serverCreds;
-    if (ldap_sasl_bind_s(
+    int rc = ldap_sasl_bind_s(
         ld,
-        username.c_str(),
+        dn.c_str(),
         LDAP_SASL_SIMPLE,
         &clientCreds,
         NULL,
         NULL,
         &serverCreds
-    ) != LDAP_SUCCESS) {
-        std::cerr << "LDAP bind failed for user: " << username << "\n";
+    );
+    if (rc != LDAP_SUCCESS) {
+        fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
         return false;
-    };
+    }
 
     // add credentials to map
     auto map = login_map.unique_access();
@@ -146,7 +150,9 @@ bool login(std::string username, std::string password, LDAP* ld, MAP_T& login_ma
 
 void threadedConnection(thread_data data) {
     // handle client connection in a separate thread
-    // recv
+    
+    std::string username = "";
+
     char buffer[1024] = {0};
     for (;;) {
         ssize_t recvd = recv(data.client_sd, buffer, sizeof(buffer), 0);
@@ -156,6 +162,13 @@ void threadedConnection(thread_data data) {
         }
         if (recvd == 0) { // connection closed by client
             std::cout << "Client disconnected.\n";
+           
+            if (username == "") break;
+
+            auto logins = data.map->access();
+            ber_bvfree(logins->at(username));
+            logins->erase(username);
+
             break;
         }
 
@@ -194,11 +207,13 @@ void threadedConnection(thread_data data) {
             c = "OK\n";
             break;
         case LOGIN:
-            if (login(message["content"][0], message["content"][1], data.ld, *data.map)) {
+            if (login(message["content"]["username"], message["content"]["password"], data.ld, *data.map)) {
                 c = "OK\n";
+                username = message["content"]["username"];
             } else {
                 c = "ERR\n";
             };
+            break;
         default:
             perror("INVALID RETURN JSON");
             c = "ERR\n";
@@ -232,13 +247,36 @@ int main(int argc, char* argv[]) {
     std::vector<std::thread> allThreads;
     LDAP *ldapHandle;
     const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
+    const int ldapVersion = LDAP_VERSION3;
 
     thread_obj<std::map<std::string,BerValue*>> loginMap;
 
     // start ldap connection
-    if (ldap_initialize(&ldapHandle, ldapUri) != LDAP_SUCCESS) {
-        std::cerr << "LDAP init failed!";
-    };
+    int rc = ldap_initialize(&ldapHandle, ldapUri);
+    if (rc != LDAP_SUCCESS) {
+        std::cerr << "LDAP init failed: " << ldap_err2string(rc) << "\n";
+        return EXIT_FAILURE;
+    }
+
+    rc = ldap_set_option(
+        ldapHandle,
+        LDAP_OPT_PROTOCOL_VERSION, // OPTION
+        &ldapVersion);             // IN-Value
+    if (rc != LDAP_OPT_SUCCESS)
+    {
+        // https://www.openldap.org/software/man.cgi?query=ldap_err2string&sektion=3&apropos=0&manpath=OpenLDAP+2.4-Release
+        fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
+        ldap_unbind_ext_s(ldapHandle, NULL, NULL);
+        return EXIT_FAILURE;
+    }
+
+
+    // start TLS
+    rc = ldap_start_tls_s(ldapHandle, NULL, NULL);
+    if (rc != LDAP_SUCCESS) {
+        std::cerr << "TLS start failed: " << ldap_err2string(rc) << "\n";
+        return EXIT_FAILURE;
+    }
 
     // start binding socket/port
     if (bind(serverSocket.getDescriptor(), serverSocket.getSockAddr(), serverSocket.getSockAddrLen()) == -1) {
@@ -276,15 +314,13 @@ int main(int argc, char* argv[]) {
         std::cout << "Client connected.\n";
 
         // make thread handeling new connection
-
-
         thread_data data = {};
         data.client_sd = client_sd;
         data.directory_name = directory_name;
         data.ld = ldapHandle;
         data.map = &loginMap;
-        allThreads.push_back(std::thread(threadedConnection, data));
 
+        allThreads.push_back(std::thread(threadedConnection, data));
     }
 
 

@@ -3,8 +3,33 @@
 #include <string.h>
 #include <arpa/inet.h>
 #include <Mail.hpp>
+#include <termios.h>
 
 #include "utils/MailerSocket.hpp"
+
+void HideStdinKeystrokes()
+{
+    termios tty;
+
+    tcgetattr(STDIN_FILENO, &tty);
+
+    /* we want to disable echo */
+    tty.c_lflag &= ~ECHO;
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+}
+
+void ShowStdinKeystrokes()
+{
+   termios tty;
+
+    tcgetattr(STDIN_FILENO, &tty);
+
+    /* we want to reenable echo */
+    tty.c_lflag |= ECHO;
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &tty);
+}
 
 int main(int argc, char* argv[]) {
 
@@ -17,6 +42,9 @@ int main(int argc, char* argv[]) {
     int port = std::stoi(argv[2]);
     in_addr addr;
     inet_aton(argv[1], &addr);
+
+    bool loggedin = false;
+    std::string username;
 
     MailerSocket clientSocket = MailerSocket(addr.s_addr , port);
 
@@ -84,8 +112,7 @@ int main(int argc, char* argv[]) {
             std::cin >> msg_num;
             
             clientSocket.sendMsg(username, msg_num, READ);
-        }
-        else if(input == "DEL"){
+        } else if (input == "DEL") {
             //read input from console
             std::cout << "Username:";
             std::string username = "";
@@ -95,6 +122,19 @@ int main(int argc, char* argv[]) {
             std::cin >> msg_num;
             
             clientSocket.sendMsg(username, msg_num, DEL);
+        }
+        else if (input == "LOGIN") {
+            //read input from console
+            std::cout << "Username:";
+            std::cin >> username;
+            std::cout << "Password:";
+            std::string password = "";
+            HideStdinKeystrokes();
+            std::cin >> password;
+            ShowStdinKeystrokes();
+            std::cout << std::endl;
+
+            clientSocket.sendMsg(username, password);
         }
 
         // wait for server response
@@ -110,10 +150,14 @@ int main(int argc, char* argv[]) {
         }
 
         json message = json::parse(buffer);
-
-        if (message["receive_type"].get<int>() & REPLY) {
+        if (!(message["receive_type"].get<int>() & REPLY)) {
             perror("invalid receive type");
             continue;
+        }
+
+        // if LOGIN was successful change state of loggedin
+        if (message["receive_type"].get<int>() & LOGIN && !loggedin) {
+            loggedin = message["content"] == "OK\n";
         }
 
         std::cout << message["content"].get<std::string>();

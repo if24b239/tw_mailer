@@ -28,6 +28,7 @@ public:
     void sendMsg(Mail m, ReceiveType type);
     void sendMsg(std::string c, ReceiveType type);
     void sendMsg(std::string c, int i, ReceiveType type);
+    void sendMsg(std::string u, std::string p);
 
 private:
     int socket_fd;

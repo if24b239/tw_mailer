@@ -83,3 +83,12 @@ void MailerSocket::sendMsg(std::string c, int i, ReceiveType type) {
     j["number"] = i;
     sendMessage(j.dump(), this->getDescriptor());
 }
+
+void MailerSocket::sendMsg(std::string u, std::string p) {
+    nlohmann::json j;
+    j["receive_type"] = LOGIN;
+    j["content"] = json::object();
+    j["content"]["username"] = u;
+    j["content"]["password"] = p;
+    sendMessage(j.dump(), this->getDescriptor());
+}
