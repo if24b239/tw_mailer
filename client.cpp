@@ -58,12 +58,10 @@ int main(int argc, char* argv[]) {
 
     while ((std::cin >> input) && input != "QUIT") {
         if(input == "SEND") {
-    
-            std::cout << "Sender:";
-            std::string sender = "";
-            std::cin >> sender;
-            //read input and clear whitespaces after
-            std::cin.ignore();
+            if (!loggedin) {
+                std::cout << "You need to be Logged In!\n";
+                continue;
+            }
 
             std::cout << "Receiver:";
             std::string receiver = "";
@@ -88,35 +86,37 @@ int main(int argc, char* argv[]) {
             }
 
             // create mail constuct
-            Mail mail(sender, receiver, subject, message);
+            Mail mail(username, receiver, subject, message);
 
             // send the mail to the server
             clientSocket.sendMsg(mail, SEND);
         }
         else if (input == "LIST"){
-            //read username from console
-            std::cout << "Username:";   
-            std::string username = "";
-            std::cin >> username;
-
+            if (!loggedin) {
+                std::cout << "You need to be Logged In!\n";
+                continue;
+            }
+            //read mail subjects
             clientSocket.sendMsg(username, LIST);
             
         }
         else if(input == "READ"){
+            if (!loggedin) {
+                std::cout << "You need to be Logged In!\n";
+                continue;
+            }
             //read input from console
-            std::cout << "Username:";
-            std::string username = "";
-            std::cin >> username;
             std::cout << "Message Number:";
             int msg_num;
             std::cin >> msg_num;
             
             clientSocket.sendMsg(username, msg_num, READ);
         } else if (input == "DEL") {
+            if (!loggedin) {
+                std::cout << "You need to be Logged In!\n";
+                continue;
+            }
             //read input from console
-            std::cout << "Username:";
-            std::string username = "";
-            std::cin >> username;
             std::cout << "Message Number:";
             int msg_num;
             std::cin >> msg_num;
@@ -124,6 +124,10 @@ int main(int argc, char* argv[]) {
             clientSocket.sendMsg(username, msg_num, DEL);
         }
         else if (input == "LOGIN") {
+            if (loggedin) {
+                std::cout << "You are already Logged In as " + username + "\n";
+                continue;
+            }
             //read input from console
             std::cout << "Username:";
             std::cin >> username;
@@ -156,7 +160,7 @@ int main(int argc, char* argv[]) {
         }
 
         // if LOGIN was successful change state of loggedin
-        if (message["receive_type"].get<int>() & LOGIN && !loggedin) {
+        if ((message["receive_type"].get<int>() & LOGIN) && !loggedin) {
             loggedin = message["content"] == "OK\n";
         }
 

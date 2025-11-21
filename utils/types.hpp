@@ -3,6 +3,7 @@
 #include <string>
 
 enum ReceiveType {
+    TYPE_NONE = 0,
     SEND = 1 << 0,
     LIST = 1 << 1,
     READ = 1 << 2,

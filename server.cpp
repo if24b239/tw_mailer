@@ -18,8 +18,6 @@
 struct thread_data {
     int client_sd;
     std::string directory_name;
-    LDAP* ld;
-    MAP_T* map;
 };
 
 void saveMessage(json mail, std::string dir) {
@@ -114,7 +112,39 @@ void deleteMessage(std::string username, int number, std::string dir) {
     outfile.close();
 }
 
-bool login(std::string username, std::string password, LDAP* ld, MAP_T& login_map) {
+bool login(std::string username, std::string password) {
+
+    LDAP *ldapHandle;
+    const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
+    const int ldapVersion = LDAP_VERSION3;
+
+    // start ldap connection
+    int rc = ldap_initialize(&ldapHandle, ldapUri);
+    if (rc != LDAP_SUCCESS) {
+        std::cerr << "LDAP init failed: " << ldap_err2string(rc) << "\n";
+        return false;
+    }
+    if (ldapHandle == nullptr) {
+        std::cerr << "LDAP handle is NULL\n";
+        return false;
+    }
+
+    rc = ldap_set_option(
+        ldapHandle,
+        LDAP_OPT_PROTOCOL_VERSION, // OPTION
+        &ldapVersion);             // IN-Value
+    if (rc != LDAP_OPT_SUCCESS) {
+        fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
+        ldap_unbind_ext_s(ldapHandle, nullptr, nullptr);
+        return false;
+    }
+
+    // start TLS
+    rc = ldap_start_tls_s(ldapHandle, NULL, NULL);
+    if (rc != LDAP_SUCCESS) {
+        std::cerr << "TLS start failed: " << ldap_err2string(rc) << "\n";
+        return false;
+    }
 
     // get DN form username
     std::string dn = "uid=" + username + ",ou=people,dc=technikum-wien,dc=at";
@@ -125,25 +155,21 @@ bool login(std::string username, std::string password, LDAP* ld, MAP_T& login_ma
     clientCreds.bv_val = (char*)password.c_str();
     clientCreds.bv_len = strlen(password.c_str());
     
-    // credentials received
-    BerValue* serverCreds;
-    int rc = ldap_sasl_bind_s(
-        ld,
+    rc = ldap_sasl_bind_s(
+        ldapHandle,
         dn.c_str(),
         LDAP_SASL_SIMPLE,
         &clientCreds,
-        NULL,
-        NULL,
-        &serverCreds
+        nullptr,
+        nullptr,
+        nullptr
     );
     if (rc != LDAP_SUCCESS) {
         fprintf(stderr, "LDAP bind error: %s\n", ldap_err2string(rc));
         return false;
     }
 
-    // add credentials to map
-    auto map = login_map.unique_access();
-    (*map)[username] = serverCreds;
+    ldap_unbind_ext_s(ldapHandle, nullptr, nullptr);
 
     return true;
 }
@@ -162,13 +188,6 @@ void threadedConnection(thread_data data) {
         }
         if (recvd == 0) { // connection closed by client
             std::cout << "Client disconnected.\n";
-           
-            if (username == "") break;
-
-            auto logins = data.map->access();
-            ber_bvfree(logins->at(username));
-            logins->erase(username);
-
             break;
         }
 
@@ -177,6 +196,7 @@ void threadedConnection(thread_data data) {
         json returnMsg = json::object();
 
         std::string c;
+        ReceiveType l = TYPE_NONE;
         
         switch (message["receive_type"].get<int>())
         {
@@ -207,12 +227,14 @@ void threadedConnection(thread_data data) {
             c = "OK\n";
             break;
         case LOGIN:
-            if (login(message["content"]["username"], message["content"]["password"], data.ld, *data.map)) {
+            if (login(message["content"]["username"], message["content"]["password"])) {
                 c = "OK\n";
                 username = message["content"]["username"];
             } else {
                 c = "ERR\n";
             };
+
+            l = LOGIN;
             break;
         default:
             perror("INVALID RETURN JSON");
@@ -222,14 +244,13 @@ void threadedConnection(thread_data data) {
         std::memset(buffer, 0, sizeof(buffer)); //clear buffer after each message
 
         nlohmann::json j;
-        j["receive_type"] = ReceiveType::REPLY;
+        j["receive_type"] = ReceiveType::REPLY | l;
         j["content"] = c;
         std::string msg = j.dump();
         const char* messag = msg.c_str();
         if (send(data.client_sd, messag, strlen(messag), 0) == -1) {
             perror("send error");
             exit(1);
-
         }
     }
     close(data.client_sd);
@@ -245,38 +266,6 @@ int main(int argc, char* argv[]) {
     std::string directory_name = argv[2];
     MailerSocket serverSocket = MailerSocket(std::stoi(argv[1]));
     std::vector<std::thread> allThreads;
-    LDAP *ldapHandle;
-    const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
-    const int ldapVersion = LDAP_VERSION3;
-
-    thread_obj<std::map<std::string,BerValue*>> loginMap;
-
-    // start ldap connection
-    int rc = ldap_initialize(&ldapHandle, ldapUri);
-    if (rc != LDAP_SUCCESS) {
-        std::cerr << "LDAP init failed: " << ldap_err2string(rc) << "\n";
-        return EXIT_FAILURE;
-    }
-
-    rc = ldap_set_option(
-        ldapHandle,
-        LDAP_OPT_PROTOCOL_VERSION, // OPTION
-        &ldapVersion);             // IN-Value
-    if (rc != LDAP_OPT_SUCCESS)
-    {
-        // https://www.openldap.org/software/man.cgi?query=ldap_err2string&sektion=3&apropos=0&manpath=OpenLDAP+2.4-Release
-        fprintf(stderr, "ldap_set_option(PROTOCOL_VERSION): %s\n", ldap_err2string(rc));
-        ldap_unbind_ext_s(ldapHandle, NULL, NULL);
-        return EXIT_FAILURE;
-    }
-
-
-    // start TLS
-    rc = ldap_start_tls_s(ldapHandle, NULL, NULL);
-    if (rc != LDAP_SUCCESS) {
-        std::cerr << "TLS start failed: " << ldap_err2string(rc) << "\n";
-        return EXIT_FAILURE;
-    }
 
     // start binding socket/port
     if (bind(serverSocket.getDescriptor(), serverSocket.getSockAddr(), serverSocket.getSockAddrLen()) == -1) {
@@ -317,8 +306,6 @@ int main(int argc, char* argv[]) {
         thread_data data = {};
         data.client_sd = client_sd;
         data.directory_name = directory_name;
-        data.ld = ldapHandle;
-        data.map = &loginMap;
 
         allThreads.push_back(std::thread(threadedConnection, data));
     }
@@ -330,12 +317,6 @@ int main(int argc, char* argv[]) {
     for (auto& t : allThreads) {
         if (t.joinable())
             t.join();
-    }
-
-    auto map = loginMap.unique_access();
-
-    for (auto& ber : *map) {
-        ber_bvfree(ber.second);
     }
 
     return 0;
