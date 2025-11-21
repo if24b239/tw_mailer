@@ -1,5 +1,6 @@
 TARGET=./bin/twmailer
 FLAGS=-std=c++23 -I./utils -I./json/single_include/nlohmann -g -Wall
+LINKER=-lldap -llber
 CLIENT=$(TARGET)-client
 SERVER=$(TARGET)-server
 SOCKET=$(TARGET)-socket.o
@@ -12,7 +13,7 @@ $(CLIENT): $(CLIENT).o $(SOCKET) $(MAIL)
 	g++ $(FLAGS) -o $(CLIENT) $(CLIENT).o $(SOCKET) $(MAIL)
 
 $(SERVER): $(SERVER).o $(SOCKET) $(MAIL)
-	g++ $(FLAGS) -o $(SERVER) $(SERVER).o $(SOCKET) $(MAIL)
+	g++ $(FLAGS) -o $(SERVER) $(SERVER).o $(SOCKET) $(MAIL) $(LINKER)
 
 # Compile .o Files
 $(CLIENT).o: client.cpp

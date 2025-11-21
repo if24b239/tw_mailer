@@ -7,8 +7,20 @@
 #include <cstring>
 #include <fstream>
 #include <vector>
+#include <thread>
+#include <ldap.h>
 
 #include "utils/MailerSocket.hpp"
+#include "utils/threadutils.h"
+
+#define MAP_T thread_obj<std::map<std::string,BerValue*>>
+
+struct thread_data {
+    int client_sd;
+    std::string directory_name;
+    LDAP* ld;
+    MAP_T* map;
+};
 
 void saveMessage(json mail, std::string dir) {
     std::string path = dir + "/" + mail["receiver"].get<std::string>() + ".txt";
@@ -102,6 +114,112 @@ void deleteMessage(std::string username, int number, std::string dir) {
     outfile.close();
 }
 
+bool login(std::string username, std::string password, LDAP* ld, MAP_T& login_map) {
+
+    // connect with ldap server
+    // credentials to send
+    BerValue clientCreds;
+    clientCreds.bv_val = (char*)password.c_str();
+    clientCreds.bv_len = strlen(password.c_str());
+    
+    // credentials received
+    BerValue* serverCreds;
+    if (ldap_sasl_bind_s(
+        ld,
+        username.c_str(),
+        LDAP_SASL_SIMPLE,
+        &clientCreds,
+        NULL,
+        NULL,
+        &serverCreds
+    ) != LDAP_SUCCESS) {
+        std::cerr << "LDAP bind failed for user: " << username << "\n";
+        return false;
+    };
+
+    // add credentials to map
+    auto map = login_map.unique_access();
+    (*map)[username] = serverCreds;
+
+    return true;
+}
+
+void threadedConnection(thread_data data) {
+    // handle client connection in a separate thread
+    // recv
+    char buffer[1024] = {0};
+    for (;;) {
+        ssize_t recvd = recv(data.client_sd, buffer, sizeof(buffer), 0);
+        if (recvd == -1) {
+            perror("recv error");
+            continue; // wait for a new datapacket
+        }
+        if (recvd == 0) { // connection closed by client
+            std::cout << "Client disconnected.\n";
+            break;
+        }
+
+        json message = json::parse(buffer);
+
+        json returnMsg = json::object();
+
+        std::string c;
+        
+        switch (message["receive_type"].get<int>())
+        {
+        case SEND:
+            saveMessage(message["mail"], data.directory_name);
+            c = "OK\n";
+            break;
+        case LIST:
+            {
+                int count = 0;
+                std::string subjects = "";
+                for (auto s : listMessages(message["content"].get<std::string>(), data.directory_name)) {
+                    subjects += s;
+                    subjects += "\n";
+                    count++;
+                }
+                ;
+                c += "Count of Messages: " + std::to_string(count) + '\n';
+                c += subjects;
+                std::cout << c;
+            }
+            break;
+        case READ:
+            c = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name).serialize();
+            break;
+        case DEL:
+            deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name);
+            c = "OK\n";
+            break;
+        case LOGIN:
+            if (login(message["content"][0], message["content"][1], data.ld, *data.map)) {
+                c = "OK\n";
+            } else {
+                c = "ERR\n";
+            };
+        default:
+            perror("INVALID RETURN JSON");
+            c = "ERR\n";
+            break;
+        }
+        std::memset(buffer, 0, sizeof(buffer)); //clear buffer after each message
+
+        nlohmann::json j;
+        j["receive_type"] = ReceiveType::REPLY;
+        j["content"] = c;
+        std::string msg = j.dump();
+        const char* messag = msg.c_str();
+        if (send(data.client_sd, messag, strlen(messag), 0) == -1) {
+            perror("send error");
+            exit(1);
+
+        }
+    }
+    close(data.client_sd);
+}
+
 int main(int argc, char* argv[]) {
 
     if (argc != 3) {
@@ -111,7 +229,18 @@ int main(int argc, char* argv[]) {
 
     std::string directory_name = argv[2];
     MailerSocket serverSocket = MailerSocket(std::stoi(argv[1]));
+    std::vector<std::thread> allThreads;
+    LDAP *ldapHandle;
+    const char *ldapUri = "ldap://ldap.technikum-wien.at:389";
 
+    thread_obj<std::map<std::string,BerValue*>> loginMap;
+
+    // start ldap connection
+    if (ldap_initialize(&ldapHandle, ldapUri) != LDAP_SUCCESS) {
+        std::cerr << "LDAP init failed!";
+    };
+
+    // start binding socket/port
     if (bind(serverSocket.getDescriptor(), serverSocket.getSockAddr(), serverSocket.getSockAddrLen()) == -1) {
         perror("bind error");
         exit(1);
@@ -146,74 +275,32 @@ int main(int argc, char* argv[]) {
         }
         std::cout << "Client connected.\n";
 
-        // recv
-        char buffer[1024] = {0};
-        for (;;) {
-            ssize_t recvd = recv(client_sd, buffer, sizeof(buffer), 0);
-            if (recvd == -1) {
-                perror("recv error");
-                continue; // wait for a new datapacket
-            }
-            if (recvd == 0) { // connection closed by client
-                std::cout << "Client disconnected.\n";
-                break;
-            }
+        // make thread handeling new connection
 
-            json message = json::parse(buffer);
 
-            json returnMsg = json::object();
+        thread_data data = {};
+        data.client_sd = client_sd;
+        data.directory_name = directory_name;
+        data.ld = ldapHandle;
+        data.map = &loginMap;
+        allThreads.push_back(std::thread(threadedConnection, data));
 
-            std::string c;
-            
-            switch (message["receive_type"].get<int>())
-            {
-            case SEND:
-                saveMessage(message["mail"], directory_name);
-                c = "OK\n";
-                break;
-            case LIST:
-                {
-                    int count = 0;
-                    std::string subjects = "";
-                    for (auto s : listMessages(message["content"].get<std::string>(), directory_name)) {
-                        subjects += s;
-                        subjects += "\n";
-                        count++;
-                    }
-                    ;
-                    c += "Count of Messages: " + std::to_string(count) + '\n';
-                    c += subjects;
-                    std::cout << c;
-                }
-                break;
-            case READ:
-                c = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), directory_name).serialize();
-                break;
-            case DEL:
-                deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), directory_name);
-                c = "OK\n";
-                break;
-            
-            default:
-                perror("INVALID RETURN JSON");
-                c = "ERR\n";
-                break;
-            }
-            std::memset(buffer, 0, sizeof(buffer)); //clear buffer after each message
-
-            nlohmann::json j;
-            j["receive_type"] = ReceiveType::REPLY;
-            j["content"] = c;
-            std::string msg = j.dump();
-            const char* messag = msg.c_str();
-            if (send(client_sd, messag, strlen(messag), 0) == -1) {
-                perror("send error");
-                exit(1);
-            }
-        }
-        close(client_sd);
     }
 
+
+    /*
+    CLEANUP
+    */
+    for (auto& t : allThreads) {
+        if (t.joinable())
+            t.join();
+    }
+
+    auto map = loginMap.unique_access();
+
+    for (auto& ber : *map) {
+        ber_bvfree(ber.second);
+    }
 
     return 0;
 }

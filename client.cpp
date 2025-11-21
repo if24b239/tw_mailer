@@ -111,7 +111,7 @@ int main(int argc, char* argv[]) {
 
         json message = json::parse(buffer);
 
-        if (message["receive_type"].get<int>() != REPLY) {
+        if (message["receive_type"].get<int>() & REPLY) {
             perror("invalid receive type");
             continue;
         }
