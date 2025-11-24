@@ -13,11 +13,30 @@
 #include "utils/MailerSocket.hpp"
 #include "utils/threadutils.h"
 
-#define MAP_T thread_obj<std::map<std::string,BerValue*>>
+struct blacklist_entry {
+	std::string username;
+	std::string ip_address;
+	int timestamp;
+
+	bool operator==(const blacklist_entry& other) const {
+		return username == other.username || ip_address == other.ip_address;
+	}
+};
+
+#define VECTOR_T thread_obj<std::vector<blacklist_entry>>
+#define BLACKLIST_TIME 100;
 
 struct thread_data {
     int client_sd;
+	char* client_ip;
     std::string directory_name;
+    VECTOR_T* blacklist_ptr;
+
+	std::string ip_to_string() {
+		char ip[INET_ADDRSTRLEN];
+		inet_ntop(AF_INET, client_ip, ip, INET_ADDRSTRLEN);
+		return std::string(ip);
+	}
 };
 
 void saveMessage(json mail, std::string dir) {
@@ -174,10 +193,26 @@ bool login(std::string username, std::string password) {
     return true;
 }
 
+bool is_blacklisted(std::string username, std::string ip, VECTOR_T* blacklist) {
+    auto bl_acc = blacklist->access();
+
+	blacklist_entry compare_entry;
+	compare_entry.username = username;
+	compare_entry.ip_address = ip;
+
+    for (auto e : *bl_acc) {
+        if (e == compare_entry) { 
+            return true;
+        }
+    }
+    return false;
+}
+
 void threadedConnection(thread_data data) {
     // handle client connection in a separate thread
     
     std::string username = "";
+    unsigned int failedAttempts = 0;
 
     char buffer[1024] = {0};
     for (;;) {
@@ -227,15 +262,35 @@ void threadedConnection(thread_data data) {
             c = "OK\n";
             break;
         case LOGIN:
+            // end switch when the client is placklisted
+            if (is_blacklisted(message["content"]["username"], data.ip_to_string(), data.blacklist_ptr)) {
+                c = "ERR blacklisted\n";
+                break;
+            }
+
+            // check if login data is correct
             if (login(message["content"]["username"], message["content"]["password"])) {
                 c = "OK\n";
                 username = message["content"]["username"];
+                failedAttempts = 0;
             } else {
-                c = "ERR\n";
-            };
+                // handle failed access attempts and blacklisting
+                failedAttempts++;
+                c = "ERR " + std::to_string(failedAttempts) + '\n';
+                if (failedAttempts >= 3) {
+                    auto bl_acc = data.blacklist_ptr->access();
+					blacklist_entry new_entry;
+					new_entry.username = message["content"]["username"];
+					new_entry.ip_address = data.ip_to_string();
+					new_entry.timestamp = static_cast<int>(time(nullptr));
+                    bl_acc->push_back(new_entry);
 
+					failedAttempts = 0;
+                }
+            };
             l = LOGIN;
             break;
+		
         default:
             perror("INVALID RETURN JSON");
             c = "ERR\n";
@@ -256,6 +311,26 @@ void threadedConnection(thread_data data) {
     close(data.client_sd);
 }
 
+void blacklist_thread(VECTOR_T* blacklist) {
+	while (true) {
+		std::this_thread::sleep_for(std::chrono::minutes(1));
+		// get current time
+		int current_time = static_cast<int>(time(nullptr));
+
+		auto bl_acc = blacklist->access();
+		bl_acc->erase(
+			std::remove_if(
+				bl_acc->begin(),
+				bl_acc->end(),
+				[current_time](const blacklist_entry& entry) {
+					return (current_time - entry.timestamp) > BLACKLIST_TIME; // remove if entry is older than BLACKLIST_TIME seconds
+				}
+			),
+			bl_acc->end()
+		);
+	}	
+}
+
 int main(int argc, char* argv[]) {
 
     if (argc != 3) {
@@ -266,6 +341,7 @@ int main(int argc, char* argv[]) {
     std::string directory_name = argv[2];
     MailerSocket serverSocket = MailerSocket(std::stoi(argv[1]));
     std::vector<std::thread> allThreads;
+    VECTOR_T blacklist;
 
     // start binding socket/port
     if (bind(serverSocket.getDescriptor(), serverSocket.getSockAddr(), serverSocket.getSockAddrLen()) == -1) {
@@ -278,8 +354,10 @@ int main(int argc, char* argv[]) {
         exit(1);
     }
 
+	// starting blacklist cleanup thread
+	allThreads.push_back(std::thread(blacklist_thread, &blacklist));
+
     /* Binding and listening info */
-    
     system("echo -n 'Local IP addr: ';ip addr show | grep 'eth0' | grep 'inet' | awk '{print $2}' | cut -d'/' -f1");
 
     sockaddr_in addr;
@@ -305,7 +383,9 @@ int main(int argc, char* argv[]) {
         // make thread handeling new connection
         thread_data data = {};
         data.client_sd = client_sd;
+		data.client_ip = inet_ntoa(client_addr.sin_addr);
         data.directory_name = directory_name;
+        data.blacklist_ptr = &blacklist;
 
         allThreads.push_back(std::thread(threadedConnection, data));
     }
