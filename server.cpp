@@ -69,20 +69,23 @@ void saveMessage(json mail, std::string dir) {
 
 
 std::vector<std::string> listMessages(std::string username, std::string dir) {
-    
     std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
     std::ifstream file(path); //check whether file(username) exists
-    if(!file) { std::cout << "unable to open file: " << path << std::endl; }
+    if(file) { 
+        // get the json data and list all subjects if file open
+        json data = json::parse(file);
+        file.close();
 
-    // get the json data and list all subjects
-    json data = json::parse(file);
-    
-    file.close();
-
-    std::vector<std::string> subjects;
-    for (const auto& message : data) {
-        subjects.push_back(message["subject"].get<std::string>());
+        std::vector<std::string> subjects;
+        for (const auto& message : data) {
+            subjects.push_back(message["subject"].get<std::string>());
+        }
+        
     }
+
+    std::cout << "unable to open file: " << path << std::endl; 
+    std::vector<std::string> subjects;
+    subjects.push_back("not found");    //add placeholder to identify no mails found
 
     return subjects;
 }
@@ -91,21 +94,28 @@ Mail returnMessage(std::string username, int number, std::string dir) {
 
     std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
     std::ifstream file(path); //check whether file(username) exists
-    if(!file) { std::cout << "unable to open file: " << path << std::endl; }
+    if(file) { 
+        // get the json data and return the right message if file open
+        json data = json::parse(file);
 
-    // get the json data and return the right message
-    json data = json::parse(file);
+        file.close();
 
-    file.close();
+        return data.at(number-1).get<Mail>();
+    }
 
-    return data.at(number-1).get<Mail>();
+    std::cout << "unable to open file: " << path << std::endl;
+    Mail mail("not found","not found","not found","not found"); //add placeholders to identify no mail found
+    return mail;
 }
 
-void deleteMessage(std::string username, int number, std::string dir) {
+bool deleteMessage(std::string username, int number, std::string dir) {
     
     std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
     std::ifstream infile(path, std::ios::out);
-    if(!infile) { std::cout << "unable to open file: " << path << std::endl; }
+    if(!infile) { 
+        std::cout << "unable to open file: " << path << std::endl; 
+        return false;
+    }
 
     json data;
     if (infile.good()) {
@@ -115,7 +125,7 @@ void deleteMessage(std::string username, int number, std::string dir) {
             data = json::parse(content);
         } else {
             std::cout << "No Messages to be deleted in file: " << path << std::endl;
-            return;
+            return false;
         }
     } else {
         std::cout << "unable to open file: " << path << std::endl;
@@ -129,6 +139,7 @@ void deleteMessage(std::string username, int number, std::string dir) {
     outfile << data.dump(4);
 
     outfile.close();
+    return true;
 }
 
 bool login(std::string username, std::string password) {
@@ -243,26 +254,36 @@ void threadedConnection(thread_data data) {
             {
                 int count = 0;
                 std::string subjects = "";
+                //std::vector<std::string> msgSubjects =listMessages(message["content"].get<std::string>(), data.directory_name);
                 for (auto s : listMessages(message["content"].get<std::string>(), data.directory_name)) {
+                    if(count == 0 && s == "not found"){ //chk for placeholder identifying no mails found
+                        c = "ERR\n";
+                        continue;
+                    }
                     subjects += s;
                     subjects += "\n";
                     count++;
                 }
                 ;
-                c += "Count of Messages: " + std::to_string(count) + '\n';
-                c += subjects;
-                std::cout << c;
+                if(c != "ERR\n"){   //if no mails found no need to count
+                    c += "Count of Messages: " + std::to_string(count) + '\n';
+                    c += subjects;
+                }
             }
             break;
         case READ:
-            c = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name).serialize();
+            {
+                //chk whether mail was found
+                Mail chkMail = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name);
+                c = (chkMail.getSender() == "not found") ? "ERR\n" : returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name).serialize();
+            }
             break;
         case DEL:
-            deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name);
-            c = "OK\n";
+            //chk whether deletion successful
+            c = (deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name) == true) ? "OK\n" : "ERR\n";
             break;
         case LOGIN:
-            // end switch when the client is placklisted
+            // end switch when the client is blacklisted
             if (is_blacklisted(message["content"]["username"], data.ip_to_string(), data.blacklist_ptr)) {
                 c = "ERR blacklisted\n";
                 break;
