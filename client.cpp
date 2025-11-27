@@ -107,8 +107,21 @@ int main(int argc, char* argv[]) {
             }
             //read input from console
             std::cout << "Message Number:";
+            bool validInput = false;
             int msg_num;
-            std::cin >> msg_num;
+
+            while(!validInput){ //handle input which is not an integer
+                std::cin >> msg_num;
+                if(std::cin.fail()){
+                    std::cout << "invalid input" << std::endl;
+                    std::cin.clear();
+                    std::cin.ignore(std::numeric_limits<std::streamsize>::max(),
+                       '\n');
+                }
+                else{
+                    validInput = true;
+                }
+            }
             
             clientSocket.sendMsg(username, msg_num, READ);
         } else if (input == "DEL") {
@@ -119,7 +132,20 @@ int main(int argc, char* argv[]) {
             //read input from console
             std::cout << "Message Number:";
             int msg_num;
-            std::cin >> msg_num;
+            bool validInput = false;
+
+            while(!validInput){ //handle input which is not an integer
+                std::cin >> msg_num;
+                if(std::cin.fail()){
+                    std::cout << "invalid input" << std::endl;
+                    std::cin.clear();
+                    std::cin.ignore(std::numeric_limits<std::streamsize>::max(),
+                       '\n');
+                }
+                else{
+                    validInput = true;
+                }
+            }
             
             clientSocket.sendMsg(username, msg_num, DEL);
         }
