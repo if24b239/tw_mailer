@@ -173,6 +173,10 @@ Mail returnMessage(std::string username, int number, thread_data t_data) {
         }
 
         data = json::parse(*read_stream);
+        if (data.size() == 0) {
+            Mail mail("no messages to read","no messages to read","no messages to read","no messages to read");
+            return mail;
+        }
     }
     
     return data.at(number-1).get<Mail>();
