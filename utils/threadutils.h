@@ -23,7 +23,7 @@ enum ThreadType {
 /// @param .access() returns a guard_access<_T> type structure allowing modification of object during its existence
 template <typename _T>
 class thread_obj {
-private:
+protected:
 
     _T object;
     std::mutex obj_mutex;
