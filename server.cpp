@@ -227,23 +227,37 @@ void threadedConnection(thread_data data) {
 
     char buffer[1024] = {0};
     for (;;) {
-        ssize_t recvd = recv(data.client_sd, buffer, sizeof(buffer), 0);
-        if (recvd == -1) {
+        std::string recvMsg;
+        ssize_t recvd;
+        
+        while(true){    //loop to ensure large messages can be received
+            recvd = recv(data.client_sd, buffer, sizeof(buffer) - 1, 0);
+
+            if (recvd == -1) {
             perror("recv error");
             continue; // wait for a new datapacket
-        }
-        if (recvd == 0) { // connection closed by client
-            std::cout << "Client disconnected.\n";
-            break;
-        }
+            }
+            if (recvd == 0) { // connection closed by client
+                std::cout << "Client disconnected.\n";
+                break;
+            }
 
-        json message = json::parse(buffer);
+            buffer[recvd] = '\0';
+            recvMsg += buffer;
 
+            try {
+                json message = json::parse(recvMsg);
+                break; //exit loop if parsing success
+            } catch (const json::parse_error&) {    //stay in loop in case of incomplete JSON
+            }
+        }
+        if(recvd == 0) break;
+        json message = json::parse(recvMsg.c_str());
         json returnMsg = json::object();
 
         std::string c;
         ReceiveType l = TYPE_NONE;
-        
+
         switch (message["receive_type"].get<int>())
         {
         case SEND:
@@ -300,18 +314,18 @@ void threadedConnection(thread_data data) {
                 c = "ERR " + std::to_string(failedAttempts) + '\n';
                 if (failedAttempts >= 3) {
                     auto bl_acc = data.blacklist_ptr->access();
-					blacklist_entry new_entry;
-					new_entry.username = message["content"]["username"];
-					new_entry.ip_address = data.ip_to_string();
-					new_entry.timestamp = static_cast<int>(time(nullptr));
+                    blacklist_entry new_entry;
+                    new_entry.username = message["content"]["username"];
+                    new_entry.ip_address = data.ip_to_string();
+                    new_entry.timestamp = static_cast<int>(time(nullptr));
                     bl_acc->push_back(new_entry);
 
-					failedAttempts = 0;
+                    failedAttempts = 0;
                 }
             };
             l = LOGIN;
             break;
-		
+        
         default:
             perror("INVALID RETURN JSON");
             c = "ERR\n";
@@ -329,6 +343,7 @@ void threadedConnection(thread_data data) {
             exit(1);
         }
     }
+        
     close(data.client_sd);
 }
 

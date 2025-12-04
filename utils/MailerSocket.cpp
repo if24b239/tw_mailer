@@ -55,12 +55,39 @@ const sockaddr* MailerSocket::getSockAddr() const {
 }
 
 void sendMessage(std::string msg, int socket) {
+    size_t msgLength = msg.size();
+    size_t totalSent = 0;
+
     const char* message = msg.c_str();
-    if (send(socket, message, strlen(message), 0) == -1) {
-        perror("send error");
-        exit(1);
+
+    while(totalSent < msgLength) {
+        ssize_t sent = send(socket, message, msgLength - totalSent, 0);
+        if (sent == -1) {
+            perror("send error");
+            exit(1);
+        }
+        totalSent += sent;
     }
 }
+
+/*
+if (send(socket, message, strlen(message), 0) == -1) {
+        perror("send error");
+        exit(1);
+
+
+size_t totalSent = 0;
+    size_t messageLength = message.size();
+
+    while (totalSent < messageLength) {
+        ssize_t sent = send(socket, message.data() + totalSent, messageLength - totalSent, 0);
+        if (sent == -1) {
+            perror("send error");
+            break; // Handle the error appropriately
+        }
+        totalSent += sent;
+    }
+*/
 
 void MailerSocket::sendMsg(Mail m, ReceiveType type) {
     nlohmann::json j;
