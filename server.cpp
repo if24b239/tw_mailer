@@ -354,7 +354,8 @@ void threadedConnection(thread_data data) {
                 std::string subjects = "";
                 //std::vector<std::string> msgSubjects =listMessages(message["content"].get<std::string>(), data.directory_name);
                 for (auto s : listMessages(message["content"].get<std::string>(), data)) {
-                    if(count == 0 && s == "not found"){ //chk for placeholder identifying no mails found
+                    //if(count == 0 && s == "not found"){ //chk for placeholder identifying no mails found
+                    if(count == 0 && s == "no messages"){ //chk for placeholder identifying no mails found
                         c = "ERR\n";
                         continue;
                     }
@@ -373,7 +374,7 @@ void threadedConnection(thread_data data) {
             {
                 //chk whether mail was found
                 Mail chkMail = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data);
-                c = (chkMail.getSender() == "not found") ? "ERR\n" : returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data).serialize();
+                c = (chkMail.getSender() == "no messages to read") ? "ERR\n" : returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data).serialize();
             }
             break;
         case DEL:
