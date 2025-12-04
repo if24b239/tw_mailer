@@ -165,6 +165,8 @@ int main(int argc, char* argv[]) {
             std::cout << std::endl;
 
             clientSocket.sendMsg(username, password);
+        } else {
+            continue;
         }
 
         // wait for server response

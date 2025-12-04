@@ -23,7 +23,7 @@ public:
 
     void open_ofstream() {
         if (!outfile.is_open()) {
-            outfile.open(filename, std::ios::app);
+            outfile.open(filename, std::ios::trunc);
         }
     }
 

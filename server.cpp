@@ -32,6 +32,8 @@ struct thread_data {
 	char* client_ip;
     std::string directory_name;
     VECTOR(blacklist_entry)* blacklist_ptr;
+    VECTOR(Storage*)* file_ptrs;
+    std::deque<Storage>* file_storage;
 
 	std::string ip_to_string() {
 		char ip[INET_ADDRSTRLEN];
@@ -40,106 +42,183 @@ struct thread_data {
 	}
 };
 
-void saveMessage(json mail, std::string dir) {
-    std::string path = dir + "/" + mail["receiver"].get<std::string>() + ".txt";
-    
-    // Read existing data
-    std::ifstream infile(path);
-    json data;
-    if (infile.good()) {
-        std::string content((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
-        infile.close();
-        if (!content.empty()) {
-            data = json::parse(content);
-        } else {
-            data = json::array();
+Storage* get_File(std::string filename, VECTOR(Storage*)* filePointers) {
+    auto ptr = filePointers->access();
+
+    for (auto file : *ptr) {
+        auto file_ptr = file->access(StorageMode::NONE);
+        if (file_ptr->filename == filename) {
+            return file;
         }
-    } else {
-        data = json::array();
     }
+
+    // if nothing is found return nullptr
+    return nullptr;
+}
+
+/// @brief 
+/// @param dir_path name of directory to search for files
+/// @param allFiles the vector saving all thread save filenames and their fstreams.
+/// @param filePointers for threads to access allFiles.
+void readExistingFiles(std::string dir_path, std::deque<Storage>& allFiles, VECTOR(Storage*)* filePointers) {
+    auto acc = filePointers->access();
+
+    // fill allFiles and filePointers with the pointer to that file
+    for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
+        if (entry.is_regular_file()) {
+            allFiles.emplace_back(entry.path().string());
+            acc->push_back(&allFiles.back());
+        }
+    }
+}
+
+void saveMessage(json mail, thread_data t_data) {
+    std::string filename = mail["receiver"].get<std::string>() + ".txt";
+    std::string path = t_data.directory_name + "/" + filename;
     
+    Storage* file = get_File(path, t_data.file_ptrs);
+
+    // if no Storage file was found create a new one and add it to fileStorage and filePointers
+    if (file == nullptr) {
+        auto acc = t_data.file_ptrs->access();
+        t_data.file_storage->emplace_back(path);
+        acc->push_back(&t_data.file_storage->back());
+
+        // then set the newly create Storage to the current file
+        file = &t_data.file_storage->back();
+    }
+
+    // Read existing data
+    json data;
+    {
+        auto acc = file->access(StorageMode::READ);
+
+        std::ifstream* read_stream = acc->get_ifstream();
+        if (!read_stream->good()) {
+            data = json::array();
+        } else {
+            data = json::parse(*read_stream);
+        }
+    }
     // Add new message
     data.push_back(mail);
     
     // Write back
-    std::ofstream outfile(path);
-    if (!outfile) { std::cout << "unable to open file: " << path << std::endl; return; }
-    outfile << data.dump(4);
-    outfile.close();
+    {
+        auto acc = file->access(StorageMode::WRITE);
+
+        std::ofstream* write_stream = acc->get_ofstream();
+
+        if (!*write_stream) { std::cerr << "unable to open file: " << path << std::endl; return; }
+        *write_stream << data.dump(4);
+    }
+    
 }
 
 
-std::vector<std::string> listMessages(std::string username, std::string dir) {
-    std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
-    std::ifstream file(path); //check whether file(username) exists
-    if(file) { 
-        // get the json data and list all subjects if file open
-        json data = json::parse(file);
-        file.close();
+std::vector<std::string> listMessages(std::string username, thread_data data) {
+    std::string path = data.directory_name + "/" + username + ".txt"; //specifiy correct path to file
+    std::vector<std::string> subjects;
 
-        std::vector<std::string> subjects;
+    Storage* file = get_File(path, data.file_ptrs);
+    if (file == nullptr) {
+        
+        std::cerr << "unknown file: " << path << std::endl;
+        subjects.push_back("no messages");
+        return subjects;
+    }
+
+    {
+        auto acc = file->access(StorageMode::READ);
+
+        std::ifstream* read_stream = acc->get_ifstream();
+        if (!read_stream->good()) {
+            std::cerr << "couldn't open file: " << path << std::endl;
+            subjects.push_back("file error");
+            return subjects;
+        }
+
+        // get the json data and list all subjects if file open
+        json data = json::parse(*read_stream);
+        if (data.size() == 0) {
+            subjects.push_back("no messages");
+            return subjects;
+        }
+
         for (const auto& message : data) {
             subjects.push_back(message["subject"].get<std::string>());
         }
-        
     }
-
-    std::cout << "unable to open file: " << path << std::endl; 
-    std::vector<std::string> subjects;
-    subjects.push_back("not found");    //add placeholder to identify no mails found
-
+    
     return subjects;
 }
 
-Mail returnMessage(std::string username, int number, std::string dir) {
-
-    std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
-    std::ifstream file(path); //check whether file(username) exists
-    if(file) { 
-        // get the json data and return the right message if file open
-        json data = json::parse(file);
-
-        file.close();
-
-        return data.at(number-1).get<Mail>();
+Mail returnMessage(std::string username, int number, thread_data t_data) {
+    std::string path = t_data.directory_name + "/" + username + ".txt"; //specifiy correct path to file
+    json data;
+    
+    Storage* file = get_File(path, t_data.file_ptrs);
+    if (file == nullptr) {
+        Mail mail("no user found","no user found","no user found","no user found");
+        return mail;
     }
 
-    std::cout << "unable to open file: " << path << std::endl;
-    Mail mail("not found","not found","not found","not found"); //add placeholders to identify no mail found
-    return mail;
+    {
+        auto acc = file->access(StorageMode::READ);
+
+        std::ifstream* read_stream = acc->get_ifstream();
+        if (!read_stream->good()) {
+            Mail mail("couldn't open file","couldn't open file","couldn't open file","couldn't open file");
+            return mail;
+        }
+
+        data = json::parse(*read_stream);
+    }
+    
+    return data.at(number-1).get<Mail>();
 }
 
-bool deleteMessage(std::string username, int number, std::string dir) {
-    
-    std::string path = dir + "/" + username + ".txt"; //specifiy correct path to file
-    std::ifstream infile(path, std::ios::out);
-    if(!infile) { 
-        std::cout << "unable to open file: " << path << std::endl; 
+bool deleteMessage(std::string username, int number, thread_data t_data) {
+    std::string path = t_data.directory_name + "/" + username + ".txt"; //specifiy correct path to file
+    json data;
+
+    Storage* file = get_File(path, t_data.file_ptrs);
+    if (file == nullptr) {
+        std::cout << "unknown user: " << path << std::endl; 
         return false;
     }
 
-    json data;
-    if (infile.good()) {
-        std::string content((std::istreambuf_iterator<char>(infile)), std::istreambuf_iterator<char>());
-        infile.close();
-        if (!content.empty()) {
-            data = json::parse(content);
-        } else {
+    {
+        auto acc = file->access(StorageMode::READ);
+
+        std::ifstream* read_stream = acc->get_ifstream();
+        if (!read_stream->good()) {
+            std::cout << "unable to open file: " << path << std::endl; 
+            return false;
+        }
+
+        
+        data = json::parse(*read_stream);
+        if (data.size() == 0) {
             std::cout << "No Messages to be deleted in file: " << path << std::endl;
             return false;
         }
-    } else {
-        std::cout << "unable to open file: " << path << std::endl;
     }
-    infile.close();
 
     data.erase(data.begin() + number-1);
 
-    std::ofstream outfile(path);
-    if(!outfile) { std::cout << "unable to open file: " << path << std::endl; }
-    outfile << data.dump(4);
+    {
+        auto acc = file->access(StorageMode::WRITE);
 
-    outfile.close();
+        std::ofstream* write_stream = acc->get_ofstream();
+        if (!write_stream->good()) {
+            std::cout << "unable to open file: " << path << std::endl;
+            return false;
+        }
+
+        *write_stream << data.dump(4);
+    }
+
     return true;
 }
 
@@ -248,7 +327,7 @@ void threadedConnection(thread_data data) {
         switch (message["receive_type"].get<int>())
         {
         case SEND:
-            saveMessage(message["mail"], data.directory_name);
+            saveMessage(message["mail"], data);
             c = "OK\n";
             break;
         case LIST:
@@ -256,7 +335,7 @@ void threadedConnection(thread_data data) {
                 int count = 0;
                 std::string subjects = "";
                 //std::vector<std::string> msgSubjects =listMessages(message["content"].get<std::string>(), data.directory_name);
-                for (auto s : listMessages(message["content"].get<std::string>(), data.directory_name)) {
+                for (auto s : listMessages(message["content"].get<std::string>(), data)) {
                     if(count == 0 && s == "not found"){ //chk for placeholder identifying no mails found
                         c = "ERR\n";
                         continue;
@@ -275,13 +354,13 @@ void threadedConnection(thread_data data) {
         case READ:
             {
                 //chk whether mail was found
-                Mail chkMail = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name);
-                c = (chkMail.getSender() == "not found") ? "ERR\n" : returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name).serialize();
+                Mail chkMail = returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data);
+                c = (chkMail.getSender() == "not found") ? "ERR\n" : returnMessage(message["content"].get<std::string>(), message["number"].get<int>(), data).serialize();
             }
             break;
         case DEL:
             //chk whether deletion successful
-            c = (deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), data.directory_name) == true) ? "OK\n" : "ERR\n";
+            c = (deleteMessage(message["content"].get<std::string>(), message["number"].get<int>(), data) == true) ? "OK\n" : "ERR\n";
             break;
         case LOGIN:
             // end switch when the client is blacklisted
@@ -353,36 +432,6 @@ void blacklist_thread(VECTOR(blacklist_entry)* blacklist) {
 	}	
 }
 
-Storage* get_File(std::string filename, VECTOR(Storage*)* filePointers) {
-    auto ptr = filePointers->access();
-
-    for (auto file : *ptr) {
-        auto file_ptr = file->access(StorageMode::NONE);
-        if (file_ptr->filename == filename) {
-            return file;
-        }
-    }
-
-    // if nothing is found return nullptr
-    return nullptr;
-}
-
-/// @brief 
-/// @param dir_path name of directory to search for files
-/// @param allFiles the vector saving all thread save filenames and their fstreams.
-/// @param filePointers for threads to access allFiles.
-void readExistingFiles(std::string dir_path, std::deque<Storage>& allFiles, VECTOR(Storage*)* filePointers) {
-    auto acc = filePointers->access();
-
-    // fill allFiles and filePointers with the pointer to that file
-    for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
-        if (entry.is_regular_file()) {
-            allFiles.emplace_back(entry.path().filename().string());
-            acc->push_back(&allFiles.back());
-        }
-    }
-}
-
 int main(int argc, char* argv[]) {
 
     if (argc != 3) {
@@ -395,6 +444,8 @@ int main(int argc, char* argv[]) {
     std::vector<std::thread> allThreads;
     VECTOR(blacklist_entry) blacklist;
     VECTOR(Storage*) filePointers;
+
+    //!!!! ONLY ACCESS WHILE filePointers IS LOCKED TO ENSURE NO RACECONDITIONS!!!!
     std::deque<Storage> fileStorage;
 
     // get accessors for all files
@@ -443,6 +494,8 @@ int main(int argc, char* argv[]) {
 		data.client_ip = inet_ntoa(client_addr.sin_addr);
         data.directory_name = directory_name;
         data.blacklist_ptr = &blacklist;
+        data.file_ptrs = &filePointers;
+        data.file_storage = &fileStorage;
 
         allThreads.push_back(std::thread(threadedConnection, data));
     }
