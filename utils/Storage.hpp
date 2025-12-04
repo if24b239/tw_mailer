@@ -7,11 +7,12 @@
 
 enum class StorageMode {
     READ,
-    WRITE
+    WRITE,
+    NONE
 };
 
 class FileAccessors {
-private: 
+private:
     std::ofstream outfile;
     std::ifstream infile;
 
@@ -20,13 +21,13 @@ public:
     
     FileAccessors(std::string file) : filename(file) {}
 
-    std::ofstream& open_ofstream() {
+    void open_ofstream() {
         if (!outfile.is_open()) {
             outfile.open(filename, std::ios::app);
         }
     }
 
-    std::ifstream& open_ifstream() {
+    void open_ifstream() {
         if (!infile.is_open()) {
             infile.open(filename, std::ios::app);
         }
@@ -40,6 +41,14 @@ public:
         if (outfile.is_open()) {
             outfile.close();
         }
+    }
+
+    std::ofstream* get_ofstream() {
+        return &outfile;
+    }
+
+    std::ifstream* get_ifstream() {
+        return &infile;
     }
 };
 

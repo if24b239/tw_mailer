@@ -11,6 +11,7 @@
 #include <ldap.h>
 
 #include "utils/MailerSocket.hpp"
+#include "utils/Storage.hpp"
 #include "utils/threadutils.h"
 
 struct blacklist_entry {
@@ -23,14 +24,14 @@ struct blacklist_entry {
 	}
 };
 
-#define VECTOR_T thread_obj<std::vector<blacklist_entry>>
+#define VECTOR(T) thread_obj<std::vector<T>>
 #define BLACKLIST_TIME 100;
 
 struct thread_data {
     int client_sd;
 	char* client_ip;
     std::string directory_name;
-    VECTOR_T* blacklist_ptr;
+    VECTOR(blacklist_entry)* blacklist_ptr;
 
 	std::string ip_to_string() {
 		char ip[INET_ADDRSTRLEN];
@@ -204,7 +205,7 @@ bool login(std::string username, std::string password) {
     return true;
 }
 
-bool is_blacklisted(std::string username, std::string ip, VECTOR_T* blacklist) {
+bool is_blacklisted(std::string username, std::string ip, VECTOR(blacklist_entry)* blacklist) {
     auto bl_acc = blacklist->access();
 
 	blacklist_entry compare_entry;
@@ -332,7 +333,7 @@ void threadedConnection(thread_data data) {
     close(data.client_sd);
 }
 
-void blacklist_thread(VECTOR_T* blacklist) {
+void blacklist_thread(VECTOR(blacklist_entry)* blacklist) {
 	while (true) {
 		std::this_thread::sleep_for(std::chrono::minutes(1));
 		// get current time
@@ -352,6 +353,36 @@ void blacklist_thread(VECTOR_T* blacklist) {
 	}	
 }
 
+Storage* get_File(std::string filename, VECTOR(Storage*)* filePointers) {
+    auto ptr = filePointers->access();
+
+    for (auto file : *ptr) {
+        auto file_ptr = file->access(StorageMode::NONE);
+        if (file_ptr->filename == filename) {
+            return file;
+        }
+    }
+
+    // if nothing is found return nullptr
+    return nullptr;
+}
+
+/// @brief 
+/// @param dir_path name of directory to search for files
+/// @param allFiles the vector saving all thread save filenames and their fstreams.
+/// @param filePointers for threads to access allFiles.
+void readExistingFiles(std::string dir_path, std::deque<Storage>& allFiles, VECTOR(Storage*)* filePointers) {
+    auto acc = filePointers->access();
+
+    // fill allFiles and filePointers with the pointer to that file
+    for (const auto& entry : std::filesystem::directory_iterator(dir_path)) {
+        if (entry.is_regular_file()) {
+            allFiles.emplace_back(entry.path().filename().string());
+            acc->push_back(&allFiles.back());
+        }
+    }
+}
+
 int main(int argc, char* argv[]) {
 
     if (argc != 3) {
@@ -362,7 +393,12 @@ int main(int argc, char* argv[]) {
     std::string directory_name = argv[2];
     MailerSocket serverSocket = MailerSocket(std::stoi(argv[1]));
     std::vector<std::thread> allThreads;
-    VECTOR_T blacklist;
+    VECTOR(blacklist_entry) blacklist;
+    VECTOR(Storage*) filePointers;
+    std::deque<Storage> fileStorage;
+
+    // get accessors for all files
+    readExistingFiles(directory_name, fileStorage, &filePointers);
 
     // start binding socket/port
     if (bind(serverSocket.getDescriptor(), serverSocket.getSockAddr(), serverSocket.getSockAddrLen()) == -1) {
